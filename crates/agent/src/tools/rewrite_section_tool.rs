@@ -13,7 +13,7 @@ use crate::{AgentTool, ToolCallEventStream};
 pub struct RewriteSectionInput {
     /// A brief description of the edit you have made.
     ///
-    /// This is optional - if the edit is simple or obvious, you can leave it empty.
+    /// This is optional - if the edit is simple or obvious, you should leave it empty.
     pub description: String,
 
     /// The text to replace the section with.
