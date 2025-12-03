@@ -221,6 +221,13 @@ impl BufferCodegen {
     pub fn last_equal_ranges<'a>(&self, cx: &'a App) -> &'a [Range<Anchor>] {
         self.active_alternative().read(cx).last_equal_ranges()
     }
+
+    pub fn tool_description<'a>(&self, cx: &'a App) -> Option<&'a str> {
+        self.active_alternative()
+            .read(cx)
+            .tool_description
+            .as_deref()
+    }
 }
 
 impl EventEmitter<CodegenEvent> for BufferCodegen {}
@@ -245,6 +252,7 @@ pub struct CodegenAlternative {
     elapsed_time: Option<f64>,
     completion: Option<String>,
     pub message_id: Option<String>,
+    pub tool_description: Option<String>,
 }
 
 impl EventEmitter<CodegenEvent> for CodegenAlternative {}
@@ -295,14 +303,15 @@ impl CodegenAlternative {
             generation: Task::ready(()),
             diff: Diff::default(),
             telemetry,
-            _subscription: cx.subscribe(&buffer, Self::handle_buffer_event),
             builder,
-            active,
+            active: false,
             edits: Vec::new(),
             line_operations: Vec::new(),
             range,
             elapsed_time: None,
             completion: None,
+            tool_description: None,
+            _subscription: cx.subscribe(&buffer, Self::handle_buffer_event),
         }
     }
 
@@ -1062,9 +1071,17 @@ impl CodegenAlternative {
                             eprintln!("Description: {}", input.description);
                             eprintln!("Replacement text length: {}", input.replacement_text.len());
 
+                            // Store the description if non-empty
+                            let description = if !input.description.trim().is_empty() {
+                                Some(input.description.clone())
+                            } else {
+                                None
+                            };
+
                             // Apply the replacement text to the buffer and compute diff
                             let batch_diff_task = codegen
                                 .update(cx, |this, cx| {
+                                    this.tool_description = description;
                                     let range = this.range.clone();
                                     this.apply_edits(
                                         std::iter::once((range, input.replacement_text)),
