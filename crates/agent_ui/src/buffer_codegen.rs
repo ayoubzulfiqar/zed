@@ -1167,6 +1167,7 @@ impl CodegenAlternative {
                 }
             }
         });
+        cx.notify();
     }
 }
 
