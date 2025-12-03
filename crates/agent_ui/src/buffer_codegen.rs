@@ -1,7 +1,7 @@
 use crate::{context::LoadedContext, inline_prompt_editor::CodegenStatus};
 use agent::{
-    AgentTool as _, RewriteSectionInput, RewriteSectionTool, SystemPromptTemplate, Template,
-    Templates,
+    AgentTool as _, FailureMessageInput, FailureMessageTool, RewriteSectionInput,
+    RewriteSectionTool, SystemPromptTemplate, Template, Templates,
 };
 use agent_settings::AgentSettings;
 use anyhow::{Context as _, Result};
@@ -473,11 +473,18 @@ impl CodegenAlternative {
             messages.push(user_message);
             dbg!(&messages);
 
-            let tools = vec![LanguageModelRequestTool {
-                name: RewriteSectionTool::name().to_string(),
-                description: RewriteSectionTool::description().to_string(),
-                input_schema: RewriteSectionTool::input_schema(tool_input_format).to_value(),
-            }];
+            let tools = vec![
+                LanguageModelRequestTool {
+                    name: RewriteSectionTool::name().to_string(),
+                    description: RewriteSectionTool::description().to_string(),
+                    input_schema: RewriteSectionTool::input_schema(tool_input_format).to_value(),
+                },
+                LanguageModelRequestTool {
+                    name: FailureMessageTool::name().to_string(),
+                    description: FailureMessageTool::description().to_string(),
+                    input_schema: FailureMessageTool::input_schema(tool_input_format).to_value(),
+                },
+            ];
 
             let req = LanguageModelRequest {
                 thread_id: None,
@@ -1105,6 +1112,32 @@ impl CodegenAlternative {
                         }
                         Err(e) => {
                             eprintln!("Failed to parse RewriteSectionInput: {:?}", e);
+                            let _ = codegen.update(cx, |this, cx| {
+                                this.status = CodegenStatus::Error(e.into());
+                                cx.emit(CodegenEvent::Finished);
+                                cx.notify();
+                            });
+                            return;
+                        }
+                    }
+                }
+                Ok(tool_use) if tool_use.name.as_ref() == "failure_message" => {
+                    // Handle failure message tool use
+                    match serde_json::from_value::<FailureMessageInput>(tool_use.input) {
+                        Ok(input) => {
+                            eprintln!("Failure message: {}", input.message);
+
+                            let _ = codegen.update(cx, |this, cx| {
+                                // Store the failure message as the tool description
+                                this.tool_description = Some(input.message);
+                                this.status = CodegenStatus::Done;
+                                cx.emit(CodegenEvent::Finished);
+                                cx.notify();
+                            });
+                            return;
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to parse FailureMessageInput: {:?}", e);
                             let _ = codegen.update(cx, |this, cx| {
                                 this.status = CodegenStatus::Error(e.into());
                                 cx.emit(CodegenEvent::Finished);
